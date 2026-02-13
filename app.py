@@ -1,57 +1,50 @@
 import streamlit as st
 import pandas as pd
 import json
+import re
 
-st.set_page_config(page_title="Excel Bridge", layout="wide")
+st.set_page_config(page_title="Excel Range Bridge", layout="wide")
 
-st.title("Excel-to-Extension Direct Bridge")
+st.title("Excel-to-Extension: Range Selector")
+st.write("1. Paste your data. 2. Define your range (e.g., 2:254). 3. Copy the code.")
 
-# --- RESET LOGIC ---
-if st.sidebar.button("Hard Reset / Clear Cache"):
-    for key in st.session_state.keys():
-        del st.session_state[key]
-    st.rerun()
+# 1. Manual Paste Area
+pasted_text = st.text_area("Paste Excel Rows Here", height=200)
 
-# Initialize data list
-rows_to_process = []
-
-# --- OPTION 1: CSV UPLOAD ---
-st.subheader("Method A: Upload CSV")
-uploaded_file = st.file_uploader("Upload CSV file", type="csv")
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    # Force first two columns only
-    rows_to_process = df.iloc[:, :2].values.tolist()
-
-# --- OPTION 2: MANUAL PASTE ---
-st.subheader("Method B: Paste from Excel")
-# Added a unique key to force the widget to update
-pasted_text = st.text_area("Paste your Excel rows here", height=150, key="excel_input")
+# 2. Range Input
+range_input = st.text_input("Enter Row Range (e.g., 2:254 or leave blank for ALL)", placeholder="2:254")
 
 if pasted_text:
-    lines = pasted_text.strip().split('\n')
-    pasted_data = []
-    for line in lines:
+    # Split text into a full list of rows
+    all_lines = pasted_text.strip().split('\n')
+    all_data = []
+    for line in all_lines:
         parts = line.split('\t')
         just = parts[0] if len(parts) > 0 else ""
         desc = parts[1] if len(parts) > 1 else ""
-        # Filter out the headers and old technical jargon
-        if "Justification" not in just and just != "":
-            pasted_data.append([just, desc])
-    rows_to_process = pasted_data
+        all_data.append([just, desc])
 
-# --- FINAL DISPLAY ---
-if rows_to_process:
-    st.divider()
-    st.subheader("Current Preview (Check if this matches your Excel!)")
-    
-    # Create the DataFrame
-    preview_df = pd.DataFrame(rows_to_process, columns=["Justification", "Content Description"])
-    
-    # Show the table
-    st.dataframe(preview_df, use_container_width=True, height=400)
+    # Apply Range Filtering
+    final_data = all_data
+    if range_input and ":" in range_input:
+        try:
+            # Extract numbers from format like "A2:A254" or "2:254"
+            nums = re.findall(r'\d+', range_input)
+            start_row = int(nums[0]) - 1 # Adjust for 0-based indexing
+            end_row = int(nums[1])
+            final_data = all_data[start_row:end_row]
+            st.success(f"Showing Rows {start_row + 1} to {end_row}")
+        except Exception:
+            st.warning("Range format invalid. Showing all pasted data.")
 
-    # Generate the code
-    extension_code = json.dumps(rows_to_process)
+    # 3. Visual Preview
+    st.subheader("Data Preview")
+    df = pd.DataFrame(final_data, columns=["Justification", "Content Description"])
+    st.dataframe(df, use_container_width=True, height=400)
+
+    # 4. Extension Code
     st.subheader("Copy this code for your Extension:")
+    extension_code = json.dumps(final_data)
     st.code(extension_code, language="json")
+    
+    st.info(f"Total rows ready for extension: {len(final_data)}")
